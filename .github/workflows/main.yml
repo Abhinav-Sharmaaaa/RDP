@@ -12,34 +12,44 @@ jobs:
       - name: Install Tailscale on Host
         run: |
           curl -fsSL https://tailscale.com/install.sh | sh
-          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-arch-runner
+          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-arch-runner --ephemeral
 
       - name: Setup Arch Linux Container
         run: |
-          # Pull and run Arch, mapping RDP port 3389
           docker run -d --name arch-box -p 3389:3389 archlinux:latest sleep infinity
 
       - name: Configure Arch (GUI & RDP)
         run: |
-          docker exec arch-box bash -c "
+          docker exec --user root arch-box bash -c "
             pacman -Syu --noconfirm
-            pacman -S --noconfirm xfce4 xfce4-goodies xrdp base-devel git
+            pacman -S --noconfirm xfce4 xfce4-goodies base-devel git sudo
             
-            # Create user
+            # Create user and permit sudo
             useradd -m -G wheel -s /bin/bash archuser
             echo 'archuser:ArchPassword123' | chpasswd
+            echo 'archuser ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
+
+            # Build xrdp and xorgxrdp from AUR
+            sudo -u archuser bash -c '
+              cd ~
+              git clone https://aur.archlinux.org/xrdp.git
+              cd xrdp && makepkg -si --noconfirm
+              cd ~
+              git clone https://aur.archlinux.org/xorgxrdp.git
+              cd xorgxrdp && makepkg -si --noconfirm
+            '
             
-            # Configure xrdp to start XFCE
+            # Start XFCE on login
             echo 'exec startxfce4' > /home/archuser/.xinitrc
-            chmod +x /home/archuser/.xinitrc
+            chown archuser:archuser /home/archuser/.xinitrc
             
-            # Start xrdp services
-            /usr/bin/xrdp-keygen xrdp /etc/xrdp/rsakeys.ini
-            /usr/bin/xrdp
-            /usr/bin/xrdp-sesman
+            # Initialize and start RDP services
+            xrdp-keygen xrdp /etc/xrdp/rsakeys.ini
+            xrdp-sesman
+            xrdp
           "
 
-      - name: Output Connection Info
+      - name: Maintain Connection
         run: |
           TS_IP=$(tailscale ip -4)
           echo "=== ARCH RDP ACCESS ==="
@@ -48,7 +58,6 @@ jobs:
           echo "Password: ArchPassword123"
           echo "========================"
           
-          # Keep-alive loop
           while true; do
             echo "[$(date)] Arch RDP Heartbeat..."
             sleep 300
