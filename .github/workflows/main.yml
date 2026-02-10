@@ -6,14 +6,13 @@ on:
 jobs:
   arch-rdp:
     runs-on: ubuntu-latest
-    timeout-minutes: 3600
-
+    timeout-minutes: 360
+    
     steps:
       - name: Install Tailscale on Host
         run: |
           curl -fsSL https://tailscale.com/install.sh | sh
-          # Removed --ephemeral (set this in your Key settings instead)
-          # Changed --authkey to --auth-key to match your log's help text
+          # Note: We use --auth-key (with a hyphen) based on your logs
           sudo tailscale up \
             --auth-key="${{ secrets.TAILSCALE_AUTH_KEY }}" \
             --hostname="gh-arch-runner" \
@@ -21,20 +20,25 @@ jobs:
 
       - name: Setup Arch Linux Container
         run: |
-          docker run -d --name arch-box -p 3389:3389 archlinux:latest sleep infinity
+          # Start the container in the background
+          docker run -d --name arch-box --privileged -p 3389:3389 archlinux:latest sleep infinity
 
       - name: Configure Arch (GUI & RDP)
         run: |
           docker exec --user root arch-box bash -c "
+            # 1. System Update
             pacman -Syu --noconfirm
-            pacman -S --noconfirm xfce4 xfce4-goodies base-devel git sudo
             
-            # Create user for AUR building
+            # 2. Install XFCE, Xorg Server (Fixes 'X server not found'), and Build Tools
+            pacman -S --noconfirm xfce4 xfce4-goodies base-devel git sudo xorg-server xorg-apps xorg-xinit
+            
+            # 3. Create user for AUR building
             useradd -m -G wheel -s /bin/bash archuser
             echo 'archuser:ArchPassword123' | chpasswd
             echo 'archuser ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
 
-            # Build xrdp and xorgxrdp from AUR (This takes 5-8 mins)
+            # 4. Build xrdp and xorgxrdp from AUR
+            # We switch to archuser because makepkg cannot run as root
             sudo -u archuser bash -c '
               cd ~
               git clone https://aur.archlinux.org/xrdp.git
@@ -44,11 +48,17 @@ jobs:
               cd xorgxrdp && makepkg -si --noconfirm
             '
             
-            # Startup config
-            echo 'exec startxfce4' > /home/archuser/.xinitrc
-            chown archuser:archuser /home/archuser/.xinitrc
+            # 5. Configure Session
+            # .xsession is critical for xrdp to know what to launch
+            echo 'xfce4-session' > /home/archuser/.xsession
+            chmod +x /home/archuser/.xsession
+            chown archuser:archuser /home/archuser/.xsession
             
-            # Start services
+            # 6. Allow any user to start X (Fixes permission issues in containers)
+            mkdir -p /etc/X11
+            echo 'allowed_users=anybody' > /etc/X11/Xwrapper.config
+            
+            # 7. Start Services
             xrdp-keygen xrdp /etc/xrdp/rsakeys.ini
             xrdp-sesman
             xrdp
@@ -63,10 +73,11 @@ jobs:
           echo "Address:  $TS_IP"
           echo "Username: archuser"
           echo "Password: ArchPassword123"
+          echo "IMPORTANT: Select 'Xorg' as the session type in the RDP login box."
           echo "=========================================="
           echo " "
           
           while true; do
-            echo "[$(date)] Arch RDP Active..."
+            echo "[$(date)] Arch RDP Active - Press Ctrl+C to stop..."
             sleep 300
           done
