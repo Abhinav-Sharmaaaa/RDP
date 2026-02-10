@@ -12,10 +12,11 @@ jobs:
       - name: Install Tailscale on Host
         run: |
           curl -fsSL https://tailscale.com/install.sh | sh
+          # Removed --ephemeral (set this in your Key settings instead)
+          # Changed --authkey to --auth-key to match your log's help text
           sudo tailscale up \
-            --authkey="${{ secrets.TAILSCALE_AUTH_KEY }}" \
+            --auth-key="${{ secrets.TAILSCALE_AUTH_KEY }}" \
             --hostname="gh-arch-runner" \
-            --ephemeral \
             --reset
 
       - name: Setup Arch Linux Container
@@ -33,7 +34,7 @@ jobs:
             echo 'archuser:ArchPassword123' | chpasswd
             echo 'archuser ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
 
-            # Build xrdp and xorgxrdp from AUR (Takes 5-10 mins)
+            # Build xrdp and xorgxrdp from AUR (This takes 5-8 mins)
             sudo -u archuser bash -c '
               cd ~
               git clone https://aur.archlinux.org/xrdp.git
