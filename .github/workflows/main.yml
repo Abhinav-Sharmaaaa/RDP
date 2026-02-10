@@ -12,24 +12,26 @@ jobs:
       - name: Install Tailscale on Host
         run: |
           curl -fsSL https://tailscale.com/install.sh | sh
-          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-arch-runner --ephemeral --reset
+          sudo tailscale up --authkey="${{ secrets.TAILSCALE_AUTH_KEY }}" --hostname="gh-arch-runner" --ephemeral --reset
 
       - name: Setup Arch Linux Container
         run: |
+          # Pull Arch and map the RDP port to the host
           docker run -d --name arch-box -p 3389:3389 archlinux:latest sleep infinity
 
       - name: Configure Arch (GUI & RDP)
         run: |
           docker exec --user root arch-box bash -c "
+            # Update and install GUI base + build tools
             pacman -Syu --noconfirm
             pacman -S --noconfirm xfce4 xfce4-goodies base-devel git sudo
             
-            # Create user and permit sudo
+            # Create user for AUR building (makepkg cannot run as root)
             useradd -m -G wheel -s /bin/bash archuser
             echo 'archuser:ArchPassword123' | chpasswd
             echo 'archuser ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
 
-            # Build xrdp and xorgxrdp from AUR
+            # Build xrdp and xorgxrdp from AUR (This takes 5-8 minutes)
             sudo -u archuser bash -c '
               cd ~
               git clone https://aur.archlinux.org/xrdp.git
@@ -39,26 +41,32 @@ jobs:
               cd xorgxrdp && makepkg -si --noconfirm
             '
             
-            # Start XFCE on login
+            # Configure the session to launch XFCE
             echo 'exec startxfce4' > /home/archuser/.xinitrc
             chown archuser:archuser /home/archuser/.xinitrc
             
-            # Initialize and start RDP services
+            # Generate RDP keys and start the daemons
             xrdp-keygen xrdp /etc/xrdp/rsakeys.ini
             xrdp-sesman
             xrdp
           "
 
-      - name: Maintain Connection
+      - name: Maintain Connection & Output Info
         run: |
           TS_IP=$(tailscale ip -4)
-          echo "=== ARCH RDP ACCESS ==="
+          echo " "
+          echo "=========================================="
+          echo "ARCH RDP ACCESS ESTABLISHED"
+          echo "=========================================="
           echo "Address:  $TS_IP"
           echo "Username: archuser"
           echo "Password: ArchPassword123"
-          echo "========================"
+          echo "Session:  Choose 'Xorg' at login screen"
+          echo "=========================================="
+          echo " "
           
+          # Keep-alive loop to prevent the runner from finishing
           while true; do
-            echo "[$(date)] Arch RDP Heartbeat..."
+            echo "[$(date)] Arch RDP Heartbeat - Use Ctrl+C to terminate"
             sleep 300
           done
