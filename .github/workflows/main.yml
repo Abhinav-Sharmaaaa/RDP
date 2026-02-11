@@ -12,44 +12,53 @@ jobs:
       - name: Install Tailscale
         run: |
           curl -fsSL https://tailscale.com/install.sh | sh
-          sudo tailscale up --auth-key="${{ secrets.TAILSCALE_AUTH_KEY }}" --hostname="gh-ai-runner" --reset
+          # Using --auth-key with double quotes to prevent syntax errors
+          sudo tailscale up \
+            --auth-key="${{ secrets.TAILSCALE_AUTH_KEY }}" \
+            --hostname="gh-ai-runner" \
+            --reset
 
       - name: Install Desktop & AI Environment
         run: |
-          # Install Desktop and RDP
+          # 1. Update and install Desktop (XFCE) + RDP (XRDP)
           sudo apt-get update
-          sudo apt-get install -y xfce4 xfce4-goodies xrdp python3-pip python3-dev build-essential libgl1
+          sudo apt-get install -y xfce4 xfce4-goodies xrdp
           
-          # Fix Connectivity (Firewall & IPv4)
-          sudo ufw allow 3389/tcp
-          sudo sed -i 's/port=3389/port=tcp:\/\/:3389/' /etc/xrdp/xrdp.ini
-          sudo service xrdp restart
-
-          # Configure Session
-          echo "xfce4-session" > ~/.xsession
+          # 2. Install AI & System Dependencies
+          # libgl1 is required for cv2 (OpenCV) to work on servers
+          sudo apt-get install -y python3-pip python3-dev build-essential libgl1
           
-          # Install AI Libraries
+          # 3. Install Python Libraries for your project
           pip3 install flask numpy scipy pymongo opencv-python python-dotenv openpyxl
 
-      - name: Create AI File
+          # 4. FIX: Allow RDP through firewall & force IPv4
+          sudo ufw allow 3389/tcp
+          sudo sed -i 's/port=3389/port=tcp:\/\/:3389/' /etc/xrdp/xrdp.ini
+          
+          # 5. Configure Session
+          echo "xfce4-session" > ~/.xsession
+          sudo service xrdp restart
+
+      - name: Create Dummy Project File
         run: |
           mkdir -p ~/ai-project
-          echo "print('System Ready')" > ~/ai-project/main.py
+          echo "print('AI Environment Loaded. OpenCV version:', cv2.__version__)" > ~/ai-project/test.py
 
       - name: Connection Info
         run: |
           TS_IP=$(tailscale ip -4)
           echo " "
           echo "=========================================="
-          echo "UBUNTU RDP READY"
-          echo "Address: $TS_IP"
-          echo "User:    runner"
-          echo "Pass:    1"
+          echo "UBUNTU AI RDP READY"
+          echo "Address:  $TS_IP"
+          echo "Username: runner"
+          echo "Password: 1"
           echo "=========================================="
           
-          # Set password to '1'
+          # Set the password to '1'
           echo "runner:1" | sudo chpasswd
           
+          # Keep the runner alive
           while true; do
             sleep 300
           done
