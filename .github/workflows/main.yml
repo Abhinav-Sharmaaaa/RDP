@@ -1,64 +1,76 @@
-name: Ubuntu-AI-RDP
+name: Win-AI-MaxPerf
 
 on:
   workflow_dispatch:
 
 jobs:
-  ai-rdp:
-    runs-on: ubuntu-latest
+  win-max-perf:
+    runs-on: windows-latest
     timeout-minutes: 360
 
     steps:
       - name: Install Tailscale
+        shell: powershell
         run: |
-          curl -fsSL https://tailscale.com/install.sh | sh
-          # Using --auth-key with double quotes to prevent syntax errors
-          sudo tailscale up \
-            --auth-key="${{ secrets.TAILSCALE_AUTH_KEY }}" \
-            --hostname="gh-ai-runner" \
-            --reset
+          $url = "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe"
+          $output = "$env:TEMP\tailscale-setup.exe"
+          Invoke-WebRequest -Uri $url -OutFile $output
+          Start-Process -FilePath $output -ArgumentList "/quiet", "/norestart" -Wait
+          & "C:\Program Files\Tailscale\tailscale.exe" up --auth-key="${{ secrets.TAILSCALE_AUTH_KEY }}" --hostname="gh-win-perf" --reset --force-reauth
 
-      - name: Install Desktop & AI Environment
+      - name: 🚀 MAX PERFORMANCE TWEAKS
+        shell: powershell
         run: |
-          # 1. Update and install Desktop (XFCE) + RDP (XRDP)
-          sudo apt-get update
-          sudo apt-get install -y xfce4 xfce4-goodies xrdp
+          Write-Host "Killing Bloatware..."
           
-          # 2. Install AI & System Dependencies
-          # libgl1 is required for cv2 (OpenCV) to work on servers
-          sudo apt-get install -y python3-pip python3-dev build-essential libgl1
+          # 1. Disable Windows Defender (Huge speedup for Python imports/install)
+          Set-MpPreference -DisableRealtimeMonitoring $true
+          Set-MpPreference -DisableIOAVProtection $true
           
-          # 3. Install Python Libraries for your project
-          pip3 install flask numpy scipy pymongo opencv-python python-dotenv openpyxl
+          # 2. Stop Resource-Hogging Services
+          Stop-Service -Name "WSearch" -Force -ErrorAction SilentlyContinue  # Search Indexing
+          Stop-Service -Name "wuauserv" -Force -ErrorAction SilentlyContinue # Windows Update
+          Stop-Service -Name "SysMain" -Force -ErrorAction SilentlyContinue  # Superfetch
+          
+          # 3. Enable High Performance Power Plan
+          powercfg -setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c
+          
+          # 4. RDP Optimization (Disable NLA + Allow Firewall)
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          
+          # 5. Visual Performance (Strip UI effects)
+          Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects" -Name "VisualFXSetting" -Value 2
 
-          # 4. FIX: Allow RDP through firewall & force IPv4
-          sudo ufw allow 3389/tcp
-          sudo sed -i 's/port=3389/port=tcp:\/\/:3389/' /etc/xrdp/xrdp.ini
-          
-          # 5. Configure Session
-          echo "xfce4-session" > ~/.xsession
-          sudo service xrdp restart
-
-      - name: Create Dummy Project File
+      - name: Install AI Stack
+        shell: powershell
         run: |
-          mkdir -p ~/ai-project
-          echo "print('AI Environment Loaded. OpenCV version:', cv2.__version__)" > ~/ai-project/test.py
+          # Upgrade pip to latest
+          python -m pip install --upgrade pip
+          
+          # Install your AI tools + performance libraries
+          # 'mkl' helps NumPy run faster on Intel/AMD CPUs
+          pip install numpy scipy pymongo opencv-python flask python-dotenv openpyxl pandas matplotlib jupyterlab mkl
+          
+          # Create Project Shortcut
+          New-Item -ItemType Directory -Force -Path "C:\Users\runneradmin\Desktop\AI_Work"
+          Set-Content -Path "C:\Users\runneradmin\Desktop\AI_Work\test_perf.py" -Value "import cv2`nimport numpy as np`nimport time`n`nprint('Measuring Matrix Performance...')`nstart = time.time()`na = np.random.rand(5000, 5000)`nb = np.random.rand(5000, 5000)`nc = np.dot(a, b)`nprint(f'Done in {time.time()-start:.2f}s')"
 
-      - name: Connection Info
+      - name: Set Password & Connect
+        shell: powershell
         run: |
-          TS_IP=$(tailscale ip -4)
-          echo " "
-          echo "=========================================="
-          echo "UBUNTU AI RDP READY"
-          echo "Address:  $TS_IP"
-          echo "Username: runner"
-          echo "Password: 1"
-          echo "=========================================="
+          # Password must be complex for Windows Server
+          net user runneradmin "AiPerformance1!"
           
-          # Set the password to '1'
-          echo "runner:1" | sudo chpasswd
+          $tsIp = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
+          Write-Host " "
+          Write-Host "=========================================="
+          Write-Host "   WINDOWS AI PERFORMANCE MODE READY"
+          Write-Host "------------------------------------------"
+          Write-Host "   IP:       $tsIp"
+          Write-Host "   User:     runneradmin"
+          Write-Host "   Pass:     AiPerformance1!"
+          Write-Host "=========================================="
           
-          # Keep the runner alive
-          while true; do
-            sleep 300
-          done
+          while ($true) { Start-Sleep -Seconds 300 }
