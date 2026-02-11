@@ -16,43 +16,40 @@ jobs:
 
       - name: Install Desktop & AI Environment
         run: |
-          # 1. Update and install XFCE + XRDP
+          # Install Desktop and RDP
           sudo apt-get update
-          sudo apt-get install -y xfce4 xfce4-goodies xrdp
+          sudo apt-get install -y xfce4 xfce4-goodies xrdp python3-pip python3-dev build-essential libgl1
           
-          # 2. Configure XRDP to use XFCE
-          echo "xfce4-session" > ~/.xsession
+          # Fix Connectivity (Firewall & IPv4)
+          sudo ufw allow 3389/tcp
+          sudo sed -i 's/port=3389/port=tcp:\/\/:3389/' /etc/xrdp/xrdp.ini
           sudo service xrdp restart
 
-          # 3. Install Python AI Tools (The stuff from your code)
-          # We install system dependencies for OpenCV first (libgl1)
-          sudo apt-get install -y python3-pip python3-dev build-essential libgl1
+          # Configure Session
+          echo "xfce4-session" > ~/.xsession
           
-          # Install your specific libraries
-          # opencv-python-headless is lighter/faster for servers, 
-          # but use 'opencv-python' if you need cv2.imshow() windows
+          # Install AI Libraries
           pip3 install flask numpy scipy pymongo opencv-python python-dotenv openpyxl
 
-      - name: Start AI Project Directory
+      - name: Create AI File
         run: |
           mkdir -p ~/ai-project
-          echo "print('Hello from your Ubuntu AI RDP!')" > ~/ai-project/main.py
+          echo "print('System Ready')" > ~/ai-project/main.py
 
       - name: Connection Info
         run: |
           TS_IP=$(tailscale ip -4)
           echo " "
           echo "=========================================="
-          echo "UBUNTU AI RDP READY"
+          echo "UBUNTU RDP READY"
           echo "Address: $TS_IP"
           echo "User:    runner"
-          echo "Pass:    (Resetting password now...)"
+          echo "Pass:    1"
           echo "=========================================="
           
-          # Set a password for the default 'runner' user
-          echo "runner:AiPassword123!" | sudo chpasswd
+          # Set password to '1'
+          echo "runner:1" | sudo chpasswd
           
-          # Keep alive
           while true; do
             sleep 300
           done
