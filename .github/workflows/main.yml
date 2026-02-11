@@ -1,83 +1,58 @@
-name: Arch-RDP
+name: Ubuntu-AI-RDP
 
 on:
   workflow_dispatch:
 
 jobs:
-  arch-rdp:
+  ai-rdp:
     runs-on: ubuntu-latest
     timeout-minutes: 360
-    
+
     steps:
-      - name: Install Tailscale on Host
+      - name: Install Tailscale
         run: |
           curl -fsSL https://tailscale.com/install.sh | sh
-          # Note: We use --auth-key (with a hyphen) based on your logs
-          sudo tailscale up \
-            --auth-key="${{ secrets.TAILSCALE_AUTH_KEY }}" \
-            --hostname="gh-arch-runner" \
-            --reset
+          sudo tailscale up --auth-key="${{ secrets.TAILSCALE_AUTH_KEY }}" --hostname="gh-ai-runner" --reset
 
-      - name: Setup Arch Linux Container
+      - name: Install Desktop & AI Environment
         run: |
-          # Start the container in the background
-          docker run -d --name arch-box --privileged -p 3389:3389 archlinux:latest sleep infinity
+          # 1. Update and install XFCE + XRDP
+          sudo apt-get update
+          sudo apt-get install -y xfce4 xfce4-goodies xrdp
+          
+          # 2. Configure XRDP to use XFCE
+          echo "xfce4-session" > ~/.xsession
+          sudo service xrdp restart
 
-      - name: Configure Arch (GUI & RDP)
+          # 3. Install Python AI Tools (The stuff from your code)
+          # We install system dependencies for OpenCV first (libgl1)
+          sudo apt-get install -y python3-pip python3-dev build-essential libgl1
+          
+          # Install your specific libraries
+          # opencv-python-headless is lighter/faster for servers, 
+          # but use 'opencv-python' if you need cv2.imshow() windows
+          pip3 install flask numpy scipy pymongo opencv-python python-dotenv openpyxl
+
+      - name: Start AI Project Directory
         run: |
-          docker exec --user root arch-box bash -c "
-            # 1. System Update
-            pacman -Syu --noconfirm
-            
-            # 2. Install XFCE, Xorg Server (Fixes 'X server not found'), and Build Tools
-            pacman -S --noconfirm xfce4 xfce4-goodies base-devel git sudo xorg-server xorg-apps xorg-xinit
-            
-            # 3. Create user for AUR building
-            useradd -m -G wheel -s /bin/bash archuser
-            echo 'archuser:ArchPassword123' | chpasswd
-            echo 'archuser ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
+          mkdir -p ~/ai-project
+          echo "print('Hello from your Ubuntu AI RDP!')" > ~/ai-project/main.py
 
-            # 4. Build xrdp and xorgxrdp from AUR
-            # We switch to archuser because makepkg cannot run as root
-            sudo -u archuser bash -c '
-              cd ~
-              git clone https://aur.archlinux.org/xrdp.git
-              cd xrdp && makepkg -si --noconfirm
-              cd ~
-              git clone https://aur.archlinux.org/xorgxrdp.git
-              cd xorgxrdp && makepkg -si --noconfirm
-            '
-            
-            # 5. Configure Session
-            # .xsession is critical for xrdp to know what to launch
-            echo 'xfce4-session' > /home/archuser/.xsession
-            chmod +x /home/archuser/.xsession
-            chown archuser:archuser /home/archuser/.xsession
-            
-            # 6. Allow any user to start X (Fixes permission issues in containers)
-            mkdir -p /etc/X11
-            echo 'allowed_users=anybody' > /etc/X11/Xwrapper.config
-            
-            # 7. Start Services
-            xrdp-keygen xrdp /etc/xrdp/rsakeys.ini
-            xrdp-sesman
-            xrdp
-          "
-
-      - name: Maintain Connection
+      - name: Connection Info
         run: |
           TS_IP=$(tailscale ip -4)
           echo " "
           echo "=========================================="
-          echo "ARCH RDP ACCESS ESTABLISHED"
-          echo "Address:  $TS_IP"
-          echo "Username: archuser"
-          echo "Password: ArchPassword123"
-          echo "IMPORTANT: Select 'Xorg' as the session type in the RDP login box."
+          echo "UBUNTU AI RDP READY"
+          echo "Address: $TS_IP"
+          echo "User:    runner"
+          echo "Pass:    (Resetting password now...)"
           echo "=========================================="
-          echo " "
           
+          # Set a password for the default 'runner' user
+          echo "runner:AiPassword123!" | sudo chpasswd
+          
+          # Keep alive
           while true; do
-            echo "[$(date)] Arch RDP Active - Press Ctrl+C to stop..."
             sleep 300
           done
